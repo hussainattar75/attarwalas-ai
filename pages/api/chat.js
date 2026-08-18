@@ -33,8 +33,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("OpenAI API error:", error);
 
-    return res.status(500).json({
-      error: "The AI assistant could not process your request.",
-    });
+return res.status(500).json({
+  error: error.message || "Unknown OpenAI error",
+});
   }
 }
