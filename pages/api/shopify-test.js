@@ -59,10 +59,11 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      definitions: shopifyData.data.metaobjectDefinitions.nodes,
-    });
+return res.status(200).json({
+  success: true,
+  grantedScopes: tokenData.scope,
+  definitions: shopifyData.data.metaobjectDefinitions.nodes,
+});
   } catch (error) {
     return res.status(500).json({
       error: error.message || "Unknown error",
