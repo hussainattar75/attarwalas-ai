@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   try {
-    // Step 1: Get a temporary Shopify access token
+    // Get a Shopify access token
     const tokenResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`,
       {
@@ -19,27 +19,20 @@ export default async function handler(req, res) {
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      console.error("Shopify token error:", tokenData);
-
       return res.status(500).json({
-        error: "Could not authenticate with Shopify.",
+        error: "Shopify authentication failed.",
         details: tokenData,
       });
     }
 
-    // Step 2: Ask Shopify for our Fragrance Metaobjects
-    const graphqlQuery = `
+    // Ask Shopify for the Metaobject definitions
+    const query = `
       query {
-        metaobjects(first: 10, type: "fragrance") {
+        metaobjectDefinitions(first: 50) {
           nodes {
             id
-            handle
-            displayName
-            fields {
-              key
-              value
-              jsonValue
-            }
+            name
+            type
           }
         }
       }
@@ -53,33 +46,26 @@ export default async function handler(req, res) {
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": tokenData.access_token,
         },
-        body: JSON.stringify({
-          query: graphqlQuery,
-        }),
+        body: JSON.stringify({ query }),
       }
     );
 
     const shopifyData = await shopifyResponse.json();
 
     if (!shopifyResponse.ok || shopifyData.errors) {
-      console.error("Shopify GraphQL error:", shopifyData);
-
       return res.status(500).json({
         error: "Shopify GraphQL request failed.",
         details: shopifyData,
       });
     }
 
-    // Return only the fragrance data for this test
     return res.status(200).json({
       success: true,
-      fragrances: shopifyData.data.metaobjects.nodes,
+      definitions: shopifyData.data.metaobjectDefinitions.nodes,
     });
   } catch (error) {
-    console.error("Shopify test error:", error);
-
     return res.status(500).json({
-      error: error.message || "Unknown Shopify error",
+      error: error.message || "Unknown error",
     });
   }
 }
