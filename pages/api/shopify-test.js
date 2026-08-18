@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   try {
-    // Get a Shopify access token
+    // Get Shopify access token
     const tokenResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`,
       {
@@ -25,14 +25,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // Ask Shopify for the Metaobject definitions
+    // Query our custom Fragrance Metaobjects
     const query = `
       query {
-        metaobjectDefinitions(first: 50) {
+        metaobjects(first: 20, type: "fragrance") {
           nodes {
             id
-            name
-            type
+            handle
+            displayName
+            fields {
+              key
+              value
+              jsonValue
+            }
           }
         }
       }
@@ -59,11 +64,11 @@ export default async function handler(req, res) {
       });
     }
 
-return res.status(200).json({
-  success: true,
-  grantedScopes: tokenData.scope,
-  definitions: shopifyData.data.metaobjectDefinitions.nodes,
-});
+    return res.status(200).json({
+      success: true,
+      grantedScopes: tokenData.scope,
+      fragrances: shopifyData.data.metaobjects.nodes,
+    });
   } catch (error) {
     return res.status(500).json({
       error: error.message || "Unknown error",
