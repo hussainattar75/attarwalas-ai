@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     }
 
     const response = await openai.responses.create({
-      model: "gpt-5.5",
+      model: "gpt-5.6",
       instructions:
         "You are the ATTARWALAS AI Fragrance Assistant. Be helpful, friendly, concise, and knowledgeable about fragrances. For now, answer general fragrance questions. Do not invent ATTARWALAS products or product details that have not been provided to you.",
       input: message,
