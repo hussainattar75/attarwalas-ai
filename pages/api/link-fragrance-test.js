@@ -29,14 +29,17 @@ export default async function handler(req, res) {
         metafieldDefinitions(
           first: 50
           ownerType: PRODUCT
-          query: "namespace:custom key:fragrance_catalog"
+          namespace: "custom"
+          key: "fragrance_catalog"
         ) {
           nodes {
             id
             name
             namespace
             key
-            type
+            type {
+              name
+            }
             validations {
               name
               value
@@ -88,10 +91,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       grantedScopes: tokenData.scope,
-      metafieldDefinitions:
-        data.data.metafieldDefinitions.nodes,
-      fragranceMetaobjects:
-        data.data.metaobjects.nodes,
+      metafieldDefinitions: data.data.metafieldDefinitions.nodes,
+      fragranceMetaobjects: data.data.metaobjects.nodes,
     });
   } catch (error) {
     return res.status(500).json({
