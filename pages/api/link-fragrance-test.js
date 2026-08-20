@@ -1,6 +1,9 @@
 export default async function handler(req, res) {
   try {
-    // 1. Get Shopify access token
+    // Prevent accidentally creating the test product more than once.
+    const productTitle = "Customize Perfume — METAOBJECT TEST";
+
+    // 1. Shopify access token
     const tokenResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`,
       {
@@ -26,20 +29,97 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Link the existing Fragrance option to the
-    //    custom.fragrance_catalog metafield and map
-    //    each option value to its Fragrance Metaobject.
-    const mutation = `
-      mutation LinkFragranceOption(
-        $productId: ID!
-        $option: OptionUpdateInput!
-        $optionValuesToUpdate: [OptionValueUpdateInput!]
+    const graphql = async (query, variables = {}) => {
+      const response = await fetch(
+        `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2026-07/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": tokenData.access_token,
+          },
+          body: JSON.stringify({
+            query,
+            variables,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || data.errors) {
+        throw new Error(
+          JSON.stringify(data.errors || data, null, 2)
+        );
+      }
+
+      return data.data;
+    };
+
+    // 2. Check whether this test product already exists.
+    const existingQuery = `
+      query {
+        products(first: 1, query: "title:'Customize Perfume — METAOBJECT TEST'") {
+          nodes {
+            id
+            title
+            options {
+              id
+              name
+              position
+              linkedMetafield {
+                namespace
+                key
+              }
+              optionValues {
+                id
+                name
+                linkedMetafieldValue
+              }
+            }
+            variants(first: 10) {
+              nodes {
+                id
+                title
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const existingData = await graphql(existingQuery);
+    const existingProduct = existingData.products.nodes[0];
+
+    if (existingProduct) {
+      return res.status(200).json({
+        success: true,
+        alreadyExists: true,
+        product: existingProduct,
+      });
+    }
+
+    // 3. Create a completely new product with:
+    //
+    // Option 1: Search Your Fragrance
+    //   → linked to custom.fragrance_catalog
+    //
+    // Option 2: Size
+    //   → 50ml / 80ml / 100ml
+    //
+    // Option 3: Type
+    //   → Alcoholic / Non-Alcoholic
+    //
+    // Shopify's productCreate supports linked metafield options.
+    const createMutation = `
+      mutation CreateMetaobjectLinkedProduct(
+        $product: ProductCreateInput!
       ) {
-        productOptionUpdate(
-          productId: $productId
-          option: $option
-          optionValuesToUpdate: $optionValuesToUpdate
-        ) {
+        productCreate(product: $product) {
           userErrors {
             field
             message
@@ -49,17 +129,6 @@ export default async function handler(req, res) {
           product {
             id
             title
-
-            metafield(
-              namespace: "custom"
-              key: "fragrance_catalog"
-            ) {
-              namespace
-              key
-              type
-              value
-              jsonValue
-            }
 
             options {
               id
@@ -78,86 +147,88 @@ export default async function handler(req, res) {
                 linkedMetafieldValue
               }
             }
+
+            variants(first: 20) {
+              nodes {
+                id
+                title
+
+                selectedOptions {
+                  name
+                  value
+                }
+
+                price
+              }
+            }
           }
         }
       }
     `;
 
     const variables = {
-      productId: "gid://shopify/Product/10553670140192",
+      product: {
+        title: productTitle,
+        productType: "Custom Perfume Test",
 
-      option: {
-        id: "gid://shopify/ProductOption/13281470054688",
-        linkedMetafield: {
-          namespace: "custom",
-          key: "fragrance_catalog",
-        },
+        productOptions: [
+          {
+            name: "Search Your Fragrance",
+            linkedMetafield: {
+              namespace: "custom",
+              key: "fragrance_catalog",
+              values: [
+                "gid://shopify/Metaobject/227582804256",
+                "gid://shopify/Metaobject/228342759712",
+                "gid://shopify/Metaobject/2283413585696",
+                "gid://shopify/Metaobject/228343546144",
+                "gid://shopify/Metaobject/228343972128",
+              ],
+            },
+          },
+
+          {
+            name: "Size",
+            values: [
+              { name: "50ml" },
+              { name: "80ml" },
+              { name: "100ml" },
+            ],
+          },
+
+          {
+            name: "Type",
+            values: [
+              { name: "Alcoholic" },
+              { name: "Non-Alcoholic" },
+            ],
+          },
+        ],
       },
-
-      optionValuesToUpdate: [
-        {
-          id: "gid://shopify/ProductOptionValue/6927776383264",
-          linkedMetafieldValue:
-            "gid://shopify/Metaobject/227582804256",
-        },
-        {
-          id: "gid://shopify/ProductOptionValue/6927776481032",
-          linkedMetafieldValue:
-            "gid://shopify/Metaobject/228342759712",
-        },
-        {
-          id: "gid://shopify/ProductOptionValue/6927776481568",
-          linkedMetafieldValue:
-            "gid://shopify/Metaobject/228341358569",
-        },
-        {
-          id: "gid://shopify/ProductOptionValue/6927776554336",
-          linkedMetafieldValue:
-            "gid://shopify/Metaobject/228343546144",
-        },
-        {
-          id: "gid://shopify/ProductOptionValue/6927776559872",
-          linkedMetafieldValue:
-            "gid://shopify/Metaobject/228343972128",
-        },
-      ],
     };
 
-    // 3. Execute mutation
-    const shopifyResponse = await fetch(
-      `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2026-07/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": tokenData.access_token,
-        },
-        body: JSON.stringify({
-          query: mutation,
-          variables,
-        }),
-      }
+    const result = await graphql(
+      createMutation,
+      variables
     );
 
-    const shopifyData = await shopifyResponse.json();
+    const creation = result.productCreate;
 
-    if (!shopifyResponse.ok || shopifyData.errors) {
-      return res.status(500).json({
+    if (creation.userErrors.length > 0) {
+      return res.status(400).json({
         success: false,
-        error: "Shopify GraphQL request failed.",
-        details: shopifyData,
+        userErrors: creation.userErrors,
       });
     }
 
-    const result = shopifyData.data.productOptionUpdate;
-
     return res.status(200).json({
-      success: result.userErrors.length === 0,
-      userErrors: result.userErrors,
-      product: result.product,
+      success: true,
+      alreadyExists: false,
+      grantedScopes: tokenData.scope,
+      product: creation.product,
     });
   } catch (error) {
-    console.error("Fragrance option linking error:", error);
+    console.error("Metaobject linked product error:", error);
 
     return res.status(500).json({
       success: false,
