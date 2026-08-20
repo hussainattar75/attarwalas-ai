@@ -1,5 +1,6 @@
 export default async function handler(req, res) {
   try {
+    // 1. Get Shopify access token
     const tokenResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`,
       {
@@ -21,53 +22,96 @@ export default async function handler(req, res) {
       return res.status(500).json({
         success: false,
         error: "Shopify authentication failed.",
+        details: tokenData,
       });
     }
 
-    const query = `
-      query {
-        metafieldDefinitions(
-          first: 50
-          ownerType: PRODUCT
-          namespace: "custom"
-          key: "fragrance_catalog"
+    // 2. Mutation to link the existing Fragrance option
+    //    to the custom.fragrance_catalog metafield.
+    const mutation = `
+      mutation LinkFragranceOption(
+        $productId: ID!
+        $option: OptionUpdateInput!
+        $optionValuesToUpdate: [OptionValueUpdateInput!]
+      ) {
+        productOptionUpdate(
+          productId: $productId
+          option: $option
+          optionValuesToUpdate: $optionValuesToUpdate
         ) {
-          nodes {
-            id
-            name
-            namespace
-            key
-            type {
-              name
-            }
-            validations {
-              name
-              value
-            }
+          userErrors {
+            field
+            message
           }
-        }
 
-        metaobjects(
-          first: 20
-          type: "fragrance"
-        ) {
-          nodes {
+          product {
             id
-            handle
-            type
-            displayName
-            definition {
+            title
+
+            options {
               id
               name
-              type
-              displayNameKey
+              position
+
+              linkedMetafield {
+                namespace
+                key
+              }
+
+              optionValues {
+                id
+                name
+                hasVariants
+                linkedMetafieldValue
+              }
             }
           }
         }
       }
     `;
 
-    const response = await fetch(
+    const variables = {
+      productId: "gid://shopify/Product/10553670140192",
+
+      option: {
+        id: "gid://shopify/ProductOption/13281470054688",
+        linkedMetafield: {
+          namespace: "custom",
+          key: "fragrance_catalog",
+        },
+      },
+
+      optionValuesToUpdate: [
+        {
+          id: "gid://shopify/ProductOptionValue/6927776383264",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/227582804256",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776481032",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228342759712",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776481568",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228343972128",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776554336",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228343185696",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776559872",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228343546144",
+        },
+      ],
+    };
+
+    // 3. Execute mutation
+    const shopifyResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2026-07/graphql.json`,
       {
         method: "POST",
@@ -75,29 +119,36 @@ export default async function handler(req, res) {
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": tokenData.access_token,
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({
+          query: mutation,
+          variables,
+        }),
       }
     );
 
-    const data = await response.json();
+    const shopifyData = await shopifyResponse.json();
 
-    if (!response.ok || data.errors) {
+    if (!shopifyResponse.ok || shopifyData.errors) {
       return res.status(500).json({
         success: false,
-        details: data,
+        error: "Shopify GraphQL request failed.",
+        details: shopifyData,
       });
     }
 
+    const result = shopifyData.data.productOptionUpdate;
+
     return res.status(200).json({
-      success: true,
-      grantedScopes: tokenData.scope,
-      metafieldDefinitions: data.data.metafieldDefinitions.nodes,
-      fragranceMetaobjects: data.data.metaobjects.nodes,
+      success: result.userErrors.length === 0,
+      userErrors: result.userErrors,
+      product: result.product,
     });
   } catch (error) {
+    console.error("Fragrance option linking error:", error);
+
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message || "Unknown error",
     });
   }
 }
