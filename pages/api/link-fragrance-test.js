@@ -123,7 +123,6 @@ export default async function handler(req, res) {
           userErrors {
             field
             message
-            code
           }
 
           product {
