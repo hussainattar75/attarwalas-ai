@@ -26,11 +26,27 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Find the TEST product
-    const query = `
-      query {
-        products(first: 10, query: "title:'Customize Perfume Test'") {
-          nodes {
+    // 2. Link the existing Fragrance option to the
+    //    custom.fragrance_catalog metafield and map
+    //    each option value to its Fragrance Metaobject.
+    const mutation = `
+      mutation LinkFragranceOption(
+        $productId: ID!
+        $option: OptionUpdateInput!
+        $optionValuesToUpdate: [OptionValueUpdateInput!]
+      ) {
+        productOptionUpdate(
+          productId: $productId
+          option: $option
+          optionValuesToUpdate: $optionValuesToUpdate
+        ) {
+          userErrors {
+            field
+            message
+            code
+          }
+
+          product {
             id
             title
 
@@ -38,7 +54,6 @@ export default async function handler(req, res) {
               namespace: "custom"
               key: "fragrance_catalog"
             ) {
-              id
               namespace
               key
               type
@@ -63,23 +78,52 @@ export default async function handler(req, res) {
                 linkedMetafieldValue
               }
             }
-
-            variants(first: 40) {
-              nodes {
-                id
-                title
-                selectedOptions {
-                  name
-                  value
-                }
-              }
-            }
           }
         }
       }
     `;
 
-    // 3. Call Shopify Admin GraphQL
+    const variables = {
+      productId: "gid://shopify/Product/10553670140192",
+
+      option: {
+        id: "gid://shopify/ProductOption/13281470054688",
+        linkedMetafield: {
+          namespace: "custom",
+          key: "fragrance_catalog",
+        },
+      },
+
+      optionValuesToUpdate: [
+        {
+          id: "gid://shopify/ProductOptionValue/6927776383264",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/227582804256",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776481032",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228342759712",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776481568",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228341358569",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776554336",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228343546144",
+        },
+        {
+          id: "gid://shopify/ProductOptionValue/6927776559872",
+          linkedMetafieldValue:
+            "gid://shopify/Metaobject/228343972128",
+        },
+      ],
+    };
+
+    // 3. Execute mutation
     const shopifyResponse = await fetch(
       `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2026-07/graphql.json`,
       {
@@ -89,7 +133,8 @@ export default async function handler(req, res) {
           "X-Shopify-Access-Token": tokenData.access_token,
         },
         body: JSON.stringify({
-          query,
+          query: mutation,
+          variables,
         }),
       }
     );
@@ -104,14 +149,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Return diagnostic data
+    const result = shopifyData.data.productOptionUpdate;
+
     return res.status(200).json({
-      success: true,
-      grantedScopes: tokenData.scope,
-      products: shopifyData.data.products.nodes,
+      success: result.userErrors.length === 0,
+      userErrors: result.userErrors,
+      product: result.product,
     });
   } catch (error) {
-    console.error("Link fragrance diagnostic error:", error);
+    console.error("Fragrance option linking error:", error);
 
     return res.status(500).json({
       success: false,
